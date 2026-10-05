@@ -135,6 +135,21 @@ curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/assessments \
   -d '{"request_key": "assess-request-0001"}'
 ```
 
+完成计划（`category`、`note`、`assessment_id` 均可省略，旧版只发 `expected_version` 仍然兼容）：
+
+```bash
+curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/complete \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "expected_version": 3,
+    "category": "succeeded",
+    "note": "all resolvers serve the new serial",
+    "assessment_id": "asm_..."
+  }'
+```
+
+首次完成写入一条不可变完成记录，完成接口和 `GET /v1/plans/{id}` 都会在 `completion` 字段返回它；重复完成始终返回原记录，不覆盖。
+
 ## API 概览
 
 成功响应：
@@ -182,6 +197,7 @@ curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/assessments \
 ## 状态及失败行为
 
 - 计划按 `draft -> active -> completed` 单向迁移，激活和完成需要匹配版本。
+- 首次成功完成写入不可变的结束类别、说明、完成时间、最终判定引用和计划版本记录；版本冲突或引用缺失在修改计划前失败，重复完成返回原记录。
 - 区域版本只在计划草稿状态可追加，序列号严格递增且内容不可变。
 - A、AAAA、CNAME 条目在写入前规范化并稳定排序，重复条目直接拒绝。
 - 节点按 `ready -> leased -> ready` 变化，隔离节点不会被选中。

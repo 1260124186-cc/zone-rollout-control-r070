@@ -29,6 +29,19 @@ Zone Rollout Control 是面向 DNS 运维人员的 Go HTTP 控制面。它把区
 - `latest_assessment_id`：最近一次完成的一致性判定。
 - `created_at`、`activated_at`、`completed_at`：RFC3339 时间。
 
+### PlanCompletionRecord
+
+计划首次成功完成时写入的一条不可变收尾记录，之后重复完成只返回原记录，不覆盖。
+
+- `plan_id`：所属计划。
+- `category`：结束类别，取值 `succeeded`、`rolled_back` 或 `abandoned`；旧版仅带 `expected_version` 的完成请求保持为空。
+- `note`：现场最终处置说明，可省略，最长 2000 个字符。
+- `completed_at`：服务记录的 RFC3339 完成时间。
+- `assessment_id`：最终判定引用，可省略；提供时必须属于本计划，否则在修改计划前以 `not_found` 失败。
+- `plan_version`：完成时计划聚合的版本。
+
+计划详情 `GET /v1/plans/{id}` 在计划完成后返回内嵌的 `completion` 记录；列表接口仍只返回计划字段，不嵌入记录。
+
 ### ZoneRevision
 
 计划中不可变的区域内容版本。
@@ -94,6 +107,8 @@ draft --activate--> active --complete--> completed
 - 只有 `active` 可以完成。
 - 激活后不能继续添加区域版本。
 - 激活和完成需要匹配当前版本。
+- 完成请求在版本冲突或最终判定引用缺失时先失败，不修改计划。
+- 首次成功完成后写入不可变完成记录；重复完成请求（无论版本或正文）返回原记录且不覆盖。
 
 ### 节点与租约生命周期
 
@@ -160,9 +175,9 @@ ready --lease--> leased --report--> ready
 3. 存储层在锁内创建计划或版本，并原子替换状态快照。
 4. 返回带版本的新聚合。
 
-成功行为：计划按 `draft -> active -> completed` 迁移，区域版本在激活前可追加。
+成功行为：计划按 `draft -> active -> completed` 迁移，区域版本在激活前可追加；首次完成写入包含结束类别、说明、完成时间、最终判定引用和计划版本的不可变记录，计划详情可读取该记录，重复完成返回原记录。
 
-失败行为：重复序列号、非法名称、缺少版本、版本冲突或非法迁移不会修改状态。
+失败行为：重复序列号、非法名称、缺少版本、版本冲突、最终判定引用缺失或非法迁移不会修改状态。仅提供 `expected_version` 的旧版完成请求继续支持，记录的可选字段保持为空。
 
 ### W2 节点领取租约
 

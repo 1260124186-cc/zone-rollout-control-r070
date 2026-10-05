@@ -40,6 +40,24 @@ func CompletePlan(plan *RolloutPlan, now time.Time) error {
 	return nil
 }
 
+// BuildPlanCompletionRecord creates the immutable closeout for a plan that
+// has just run through CompletePlan. A legacy completion without a request
+// body leaves the category empty.
+func BuildPlanCompletionRecord(
+	plan RolloutPlan,
+	input PlanCompleteInput,
+	now time.Time,
+) PlanCompletionRecord {
+	return PlanCompletionRecord{
+		PlanID:       plan.ID,
+		Category:     CompletionCategory(input.Category),
+		Note:         input.Note,
+		CompletedAt:  now.UTC(),
+		AssessmentID: input.AssessmentID,
+		PlanVersion:  plan.Version,
+	}
+}
+
 func LeaseFingerprint(planID string, input LeaseInput) string {
 	payload := fmt.Sprintf(
 		"%s|%s|%s|%d|%d",

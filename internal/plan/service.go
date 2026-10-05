@@ -142,42 +142,81 @@ func (s *Service) Activate(
 func (s *Service) Complete(
 	ctx context.Context,
 	planID string,
-	expectedVersion uint64,
-) (domain.RolloutPlan, error) {
-	var plan domain.RolloutPlan
+	input domain.PlanCompleteInput,
+) (domain.PlanDetail, error) {
+	input = domain.NormalizePlanCompleteInput(input)
+	if err := domain.ValidatePlanCompleteInput(input); err != nil {
+		return domain.PlanDetail{}, err
+	}
+	var detail domain.PlanDetail
 	err := s.store.Write(ctx, func(state *domain.State) error {
+		// The completion record is immutable: replay the original instead of
+		// overwriting it, regardless of the retried expected version.
+		if existing, recorded := state.Completions[planID]; recorded {
+			plan, ok := state.Plans[planID]
+			if !ok {
+				return domain.NewError(domain.CodeStorageFailure, "completion record references a missing plan", map[string]any{
+					"plan_id": planID,
+				})
+			}
+			detail = detailFor(plan, &existing)
+			return nil
+		}
 		current, ok := state.Plans[planID]
 		if !ok {
 			return domain.NotFound("plan", planID)
 		}
-		if current.Version != expectedVersion {
-			return versionConflict(planID, expectedVersion, current.Version)
+		// Version conflicts and missing references fail before the plan is
+		// modified so a rejected completion never mutates the aggregate.
+		if current.Version != input.ExpectedVersion {
+			return versionConflict(planID, input.ExpectedVersion, current.Version)
+		}
+		if input.AssessmentID != "" {
+			assessment, found := state.Assessments[input.AssessmentID]
+			if !found || assessment.PlanID != planID {
+				return domain.NotFound("assessment", input.AssessmentID)
+			}
 		}
 		now := s.clock.Now().UTC()
 		if err := domain.CompletePlan(&current, now); err != nil {
 			return err
 		}
+		record := domain.BuildPlanCompletionRecord(current, input, now)
 		state.Plans[planID] = current
+		state.Completions[planID] = record
 		store.AddAudit(state, s.ids, "plan", planID, "completed", now, map[string]any{
-			"version": current.Version,
+			"version":       current.Version,
+			"category":      string(record.Category),
+			"assessment_id": record.AssessmentID,
 		})
-		plan = current
+		detail = detailFor(current, &record)
 		return nil
 	})
-	return plan, err
+	return detail, err
 }
 
-func (s *Service) Get(ctx context.Context, planID string) (domain.RolloutPlan, error) {
-	var plan domain.RolloutPlan
+func (s *Service) Get(ctx context.Context, planID string) (domain.PlanDetail, error) {
+	var detail domain.PlanDetail
 	err := s.store.Read(ctx, func(state *domain.State) error {
 		found, ok := state.Plans[planID]
 		if !ok {
 			return domain.NotFound("plan", planID)
 		}
-		plan = found
+		if record, completed := state.Completions[planID]; completed {
+			detail = detailFor(found, &record)
+			return nil
+		}
+		detail = detailFor(found, nil)
 		return nil
 	})
-	return plan, err
+	return detail, err
+}
+
+func detailFor(plan domain.RolloutPlan, record *domain.PlanCompletionRecord) domain.PlanDetail {
+	return domain.PlanDetail{
+		RolloutPlan: plan,
+		Completion:  record,
+	}
 }
 
 func (s *Service) LatestRevision(

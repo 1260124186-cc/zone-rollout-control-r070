@@ -91,7 +91,7 @@ func (s *Server) activatePlan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) completePlan(w http.ResponseWriter, r *http.Request) {
-	var input versionInput
+	var input domain.PlanCompleteInput
 	if err := decode(w, r, &input); err != nil {
 		sendError(w, r, err)
 		return
@@ -100,7 +100,7 @@ func (s *Server) completePlan(w http.ResponseWriter, r *http.Request) {
 		sendError(w, r, domain.Validation("expected_version must be greater than zero", nil))
 		return
 	}
-	result, err := s.plans.Complete(r.Context(), r.PathValue("id"), input.ExpectedVersion)
+	result, err := s.plans.Complete(r.Context(), r.PathValue("id"), input)
 	if err != nil {
 		sendError(w, r, err)
 		return

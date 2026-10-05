@@ -42,6 +42,33 @@ const (
 	EntryCNAME EntryType = "CNAME"
 )
 
+type CompletionCategory string
+
+const (
+	CompletionSucceeded  CompletionCategory = "succeeded"
+	CompletionRolledBack CompletionCategory = "rolled_back"
+	CompletionAbandoned  CompletionCategory = "abandoned"
+)
+
+// PlanCompletionRecord is the immutable closeout written by the first
+// successful plan completion. Repeated completion requests return the stored
+// record instead of replacing it.
+type PlanCompletionRecord struct {
+	PlanID       string             `json:"plan_id"`
+	Category     CompletionCategory `json:"category"`
+	Note         string             `json:"note,omitempty"`
+	CompletedAt  time.Time          `json:"completed_at"`
+	AssessmentID string             `json:"assessment_id,omitempty"`
+	PlanVersion  uint64             `json:"plan_version"`
+}
+
+// PlanDetail is a plan aggregate together with its immutable completion
+// record. The record is present only after the plan has been completed.
+type PlanDetail struct {
+	RolloutPlan
+	Completion *PlanCompletionRecord `json:"completion,omitempty"`
+}
+
 type ZoneEntry struct {
 	Owner string    `json:"owner"`
 	Type  EntryType `json:"type"`
@@ -143,18 +170,19 @@ type AuditEvent struct {
 }
 
 type State struct {
-	SchemaVersion         int                          `json:"schema_version"`
-	Revision              uint64                       `json:"revision"`
-	Plans                 map[string]RolloutPlan       `json:"plans"`
-	Revisions             map[string]ZoneRevision      `json:"revisions"`
-	Nodes                 map[string]ResolverNode      `json:"nodes"`
-	Leases                map[string]NodeLease         `json:"leases"`
-	LeaseGroups           map[string]LeaseGroup        `json:"lease_groups"`
-	Probes                map[string]Probe             `json:"probes"`
-	Assessments           map[string]RolloutAssessment `json:"assessments"`
-	LeaseRequestKeys      map[string]string            `json:"lease_request_keys"`
-	AssessmentRequestKeys map[string]string            `json:"assessment_request_keys"`
-	AuditEvents           []AuditEvent                 `json:"audit_events"`
+	SchemaVersion         int                             `json:"schema_version"`
+	Revision              uint64                          `json:"revision"`
+	Plans                 map[string]RolloutPlan          `json:"plans"`
+	Revisions             map[string]ZoneRevision         `json:"revisions"`
+	Nodes                 map[string]ResolverNode         `json:"nodes"`
+	Leases                map[string]NodeLease            `json:"leases"`
+	LeaseGroups           map[string]LeaseGroup           `json:"lease_groups"`
+	Probes                map[string]Probe                `json:"probes"`
+	Assessments           map[string]RolloutAssessment    `json:"assessments"`
+	Completions           map[string]PlanCompletionRecord `json:"plan_completions"`
+	LeaseRequestKeys      map[string]string               `json:"lease_request_keys"`
+	AssessmentRequestKeys map[string]string               `json:"assessment_request_keys"`
+	AuditEvents           []AuditEvent                    `json:"audit_events"`
 }
 
 type PageMeta struct {

@@ -9,13 +9,14 @@ import (
 )
 
 const (
-	MaxZoneRunes       = 253
-	MaxAuthorityRunes  = 253
-	MaxNodeNameRunes   = 180
-	MaxRegionRunes     = 48
-	MinRequestKeyRunes = 8
-	MaxRequestKeyRunes = 64
-	MaxEntries         = 500
+	MaxZoneRunes           = 253
+	MaxAuthorityRunes      = 253
+	MaxNodeNameRunes       = 180
+	MaxRegionRunes         = 48
+	MinRequestKeyRunes     = 8
+	MaxRequestKeyRunes     = 64
+	MaxEntries             = 500
+	MaxCompletionNoteRunes = 2000
 )
 
 type PlanCreateInput struct {
@@ -54,6 +55,13 @@ type ProbeInput struct {
 
 type AssessmentInput struct {
 	RequestKey string `json:"request_key"`
+}
+
+type PlanCompleteInput struct {
+	ExpectedVersion uint64 `json:"expected_version"`
+	Category        string `json:"category"`
+	Note            string `json:"note"`
+	AssessmentID    string `json:"assessment_id"`
 }
 
 func NormalizePlanInput(input PlanCreateInput) PlanCreateInput {
@@ -245,6 +253,29 @@ func ValidateAssessmentInput(input AssessmentInput) error {
 		return Validation("assessment input is invalid", map[string]any{
 			"request_key": err.Error(),
 		})
+	}
+	return nil
+}
+
+func NormalizePlanCompleteInput(input PlanCompleteInput) PlanCompleteInput {
+	input.Category = strings.TrimSpace(strings.ToLower(input.Category))
+	input.Note = strings.TrimSpace(input.Note)
+	input.AssessmentID = strings.TrimSpace(input.AssessmentID)
+	return input
+}
+
+func ValidatePlanCompleteInput(input PlanCompleteInput) error {
+	details := make(map[string]any)
+	switch CompletionCategory(input.Category) {
+	case "", CompletionSucceeded, CompletionRolledBack, CompletionAbandoned:
+	default:
+		details["category"] = "must be succeeded, rolled_back, or abandoned"
+	}
+	if count := utf8.RuneCountInString(input.Note); count > MaxCompletionNoteRunes {
+		details["note"] = "must contain at most 2000 characters"
+	}
+	if len(details) > 0 {
+		return Validation("plan completion input is invalid", details)
 	}
 	return nil
 }
