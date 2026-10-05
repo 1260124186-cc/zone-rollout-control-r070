@@ -56,6 +56,45 @@ type AssessmentInput struct {
 	RequestKey string `json:"request_key"`
 }
 
+type PlanCompleteInput struct {
+	ExpectedVersion uint64 `json:"expected_version"`
+	Category        string `json:"category"`
+	Notes           string `json:"notes"`
+	AssessmentID    string `json:"assessment_id"`
+}
+
+const MaxCompletionNotesRunes = 1000
+
+func NormalizePlanCompleteInput(input PlanCompleteInput) PlanCompleteInput {
+	input.Category = strings.ToLower(strings.TrimSpace(input.Category))
+	if input.Category == "" {
+		input.Category = string(EndUnclassified)
+	}
+	input.Notes = strings.TrimSpace(input.Notes)
+	input.AssessmentID = strings.TrimSpace(input.AssessmentID)
+	return input
+}
+
+func ValidatePlanCompleteInput(input PlanCompleteInput) error {
+	input = NormalizePlanCompleteInput(input)
+	details := make(map[string]any)
+	if input.ExpectedVersion == 0 {
+		details["expected_version"] = "must be greater than zero"
+	}
+	switch EndCategory(input.Category) {
+	case EndSuccessful, EndRolledBack, EndAborted, EndUnclassified:
+	default:
+		details["category"] = "must be one of successful, rolled_back, aborted, or unclassified"
+	}
+	if count := utf8.RuneCountInString(input.Notes); count > MaxCompletionNotesRunes {
+		details["notes"] = "must contain at most 1000 characters"
+	}
+	if len(details) > 0 {
+		return Validation("completion input is invalid", details)
+	}
+	return nil
+}
+
 func NormalizePlanInput(input PlanCreateInput) PlanCreateInput {
 	input.Zone = canonicalName(input.Zone)
 	return input

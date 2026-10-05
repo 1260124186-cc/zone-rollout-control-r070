@@ -142,42 +142,92 @@ func (s *Service) Activate(
 func (s *Service) Complete(
 	ctx context.Context,
 	planID string,
-	expectedVersion uint64,
-) (domain.RolloutPlan, error) {
-	var plan domain.RolloutPlan
+	input domain.PlanCompleteInput,
+) (domain.PlanDetail, error) {
+	input = domain.NormalizePlanCompleteInput(input)
+	var detail domain.PlanDetail
 	err := s.store.Write(ctx, func(state *domain.State) error {
 		current, ok := state.Plans[planID]
 		if !ok {
 			return domain.NotFound("plan", planID)
 		}
-		if current.Version != expectedVersion {
-			return versionConflict(planID, expectedVersion, current.Version)
+		if completionID, completed := state.CompletionIndex[planID]; completed {
+			existing, found := state.Completions[completionID]
+			if !found {
+				return domain.NewError(domain.CodeStorageFailure, "plan references a missing completion record", map[string]any{
+					"completion_id": completionID,
+				})
+			}
+			detail = domain.PlanDetail{RolloutPlan: current, Completion: &existing}
+			return nil
+		}
+		if err := domain.ValidatePlanCompleteInput(input); err != nil {
+			return err
+		}
+		if current.Version != input.ExpectedVersion {
+			return versionConflict(planID, input.ExpectedVersion, current.Version)
+		}
+		var assessment *domain.RolloutAssessment
+		if input.AssessmentID != "" {
+			referenced, found := state.Assessments[input.AssessmentID]
+			if !found || referenced.PlanID != planID {
+				return domain.Validation("completion references an assessment that does not exist", map[string]any{
+					"plan_id":       planID,
+					"assessment_id": input.AssessmentID,
+				})
+			}
+			assessment = &referenced
 		}
 		now := s.clock.Now().UTC()
 		if err := domain.CompletePlan(&current, now); err != nil {
 			return err
 		}
+		completion := domain.PlanCompletion{
+			ID:          s.ids.New("cmp"),
+			PlanID:      planID,
+			Category:    domain.EndCategory(input.Category),
+			Notes:       input.Notes,
+			CompletedAt: now,
+			PlanVersion: current.Version,
+		}
+		if assessment != nil {
+			completion.AssessmentID = assessment.ID
+		}
+		state.Completions[completion.ID] = completion
+		state.CompletionIndex[planID] = completion.ID
 		state.Plans[planID] = current
-		store.AddAudit(state, s.ids, "plan", planID, "completed", now, map[string]any{
-			"version": current.Version,
+		store.AddAudit(state, s.ids, "completion", completion.ID, "recorded", now, map[string]any{
+			"plan_id":      planID,
+			"category":     string(completion.Category),
+			"plan_version": completion.PlanVersion,
 		})
-		plan = current
+		recorded := completion
+		detail = domain.PlanDetail{RolloutPlan: current, Completion: &recorded}
 		return nil
 	})
-	return plan, err
+	return detail, err
 }
 
-func (s *Service) Get(ctx context.Context, planID string) (domain.RolloutPlan, error) {
-	var plan domain.RolloutPlan
+func (s *Service) Get(ctx context.Context, planID string) (domain.PlanDetail, error) {
+	var detail domain.PlanDetail
 	err := s.store.Read(ctx, func(state *domain.State) error {
 		found, ok := state.Plans[planID]
 		if !ok {
 			return domain.NotFound("plan", planID)
 		}
-		plan = found
+		detail.RolloutPlan = found
+		if completionID, completed := state.CompletionIndex[planID]; completed {
+			completion, exists := state.Completions[completionID]
+			if !exists {
+				return domain.NewError(domain.CodeStorageFailure, "plan references a missing completion record", map[string]any{
+					"completion_id": completionID,
+				})
+			}
+			detail.Completion = &completion
+		}
 		return nil
 	})
-	return plan, err
+	return detail, err
 }
 
 func (s *Service) LatestRevision(

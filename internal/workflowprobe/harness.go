@@ -14,6 +14,7 @@ import (
 
 	"solo-0014-zone-rollout-control/internal/allocation"
 	"solo-0014-zone-rollout-control/internal/assessment"
+	"solo-0014-zone-rollout-control/internal/domain"
 	"solo-0014-zone-rollout-control/internal/fleet"
 	"solo-0014-zone-rollout-control/internal/httpapi"
 	"solo-0014-zone-rollout-control/internal/plan"
@@ -94,6 +95,10 @@ func (h *harness) call(method string, path string, requestBody any, target any) 
 	if requestBody != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+	return h.do(request, target)
+}
+
+func (h *harness) do(request *http.Request, target any) error {
 	response, err := h.client.Do(request)
 	if err != nil {
 		return fmt.Errorf("perform request: %w", err)
@@ -132,4 +137,15 @@ func (h *harness) call(method string, path string, requestBody any, target any) 
 		return fmt.Errorf("decode response data: %w", err)
 	}
 	return nil
+}
+
+func (h *harness) createDraftPlan(zone string) (domain.RolloutPlan, error) {
+	var plan domain.RolloutPlan
+	err := h.call(http.MethodPut, "/v1/plans", domain.PlanCreateInput{
+		Zone:                zone,
+		MinimumSuccessRatio: 0,
+		MaximumLatencyMS:    60,
+		ExpectedNodes:       1,
+	}, &plan)
+	return plan, err
 }

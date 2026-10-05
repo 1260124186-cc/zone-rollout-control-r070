@@ -119,6 +119,30 @@ type Probe struct {
 	PayloadFingerprint string    `json:"payload_fingerprint"`
 }
 
+type EndCategory string
+
+const (
+	EndSuccessful   EndCategory = "successful"
+	EndRolledBack   EndCategory = "rolled_back"
+	EndAborted      EndCategory = "aborted"
+	EndUnclassified EndCategory = "unclassified"
+)
+
+type PlanCompletion struct {
+	ID           string      `json:"id"`
+	PlanID       string      `json:"plan_id"`
+	Category     EndCategory `json:"category"`
+	Notes        string      `json:"notes,omitempty"`
+	CompletedAt  time.Time   `json:"completed_at"`
+	AssessmentID string      `json:"assessment_id,omitempty"`
+	PlanVersion  uint64      `json:"plan_version"`
+}
+
+type PlanDetail struct {
+	RolloutPlan
+	Completion *PlanCompletion `json:"completion,omitempty"`
+}
+
 type RolloutAssessment struct {
 	ID               string    `json:"id"`
 	PlanID           string    `json:"plan_id"`
@@ -152,6 +176,8 @@ type State struct {
 	LeaseGroups           map[string]LeaseGroup        `json:"lease_groups"`
 	Probes                map[string]Probe             `json:"probes"`
 	Assessments           map[string]RolloutAssessment `json:"assessments"`
+	Completions           map[string]PlanCompletion    `json:"completions"`
+	CompletionIndex       map[string]string            `json:"completion_index"`
 	LeaseRequestKeys      map[string]string            `json:"lease_request_keys"`
 	AssessmentRequestKeys map[string]string            `json:"assessment_request_keys"`
 	AuditEvents           []AuditEvent                 `json:"audit_events"`

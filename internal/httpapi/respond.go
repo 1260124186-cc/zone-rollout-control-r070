@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
+	"strings"
 
 	"solo-0014-zone-rollout-control/internal/domain"
 )
@@ -27,6 +29,31 @@ type failureBody struct {
 func decode(w http.ResponseWriter, r *http.Request, target any) error {
 	r.Body = http.MaxBytesReader(w, r.Body, requestLimit)
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return domain.Validation("request body must contain valid JSON", map[string]any{
+			"reason": err.Error(),
+		})
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return domain.Validation("request body must contain one JSON value", nil)
+	}
+	return nil
+}
+
+func decodeOptional(w http.ResponseWriter, r *http.Request, target any) error {
+	r.Body = http.MaxBytesReader(w, r.Body, requestLimit)
+	payload, err := io.ReadAll(r.Body)
+	if err != nil {
+		return domain.Validation("request body could not be read", map[string]any{
+			"reason": err.Error(),
+		})
+	}
+	if len(strings.TrimSpace(string(payload))) == 0 {
+		return nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		return domain.Validation("request body must contain valid JSON", map[string]any{

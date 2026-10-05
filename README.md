@@ -100,6 +100,23 @@ curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/activate \
   -d '{"expected_version": 2}'
 ```
 
+完成计划（仅提交 `expected_version` 时结束类别记为 `unclassified`，兼容旧请求）：
+
+```bash
+curl -sS -X PATCH http://127.0.0.1:8090/v1/plans/<plan_id>/complete \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "expected_version": 3,
+    "category": "successful",
+    "notes": "所有节点已服务新版本",
+    "assessment_id": "asm_..."
+  }'
+```
+
+`category` 可选值为 `successful`、`rolled_back`、`aborted` 或 `unclassified`；`assessment_id`
+必须是本计划已存在的一致性判定。首次成功完成会生成不可变完成记录，重复完成返回原记录，
+可通过 `GET /v1/plans/{id}` 返回的 `completion` 字段读取。
+
 分配节点租约：
 
 ```bash

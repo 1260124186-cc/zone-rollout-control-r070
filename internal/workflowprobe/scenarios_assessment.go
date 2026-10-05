@@ -61,6 +61,31 @@ func runConsistencyAssessment() error {
 		return ensure(false, "latest assessment does not match")
 	}
 
+	var assessedPlan domain.PlanDetail
+	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID, nil, &assessedPlan); err != nil {
+		return err
+	}
+	var assessedComplete domain.PlanDetail
+	if err := harness.call(http.MethodPatch, "/v1/plans/"+plan.ID+"/complete", map[string]any{
+		"expected_version": assessedPlan.Version,
+		"category":         "successful",
+		"notes":            "final verification passed",
+		"assessment_id":    consistent.ID,
+	}, &assessedComplete); err != nil {
+		return err
+	}
+	if assessedComplete.Completion == nil ||
+		assessedComplete.Completion.AssessmentID != consistent.ID {
+		return ensure(false, "completion did not capture the final assessment reference")
+	}
+	var referenced domain.RolloutAssessment
+	if err := harness.call(http.MethodGet, "/v1/plans/"+plan.ID+"/assessments/latest", nil, &referenced); err != nil {
+		return err
+	}
+	if referenced.ID != assessedComplete.Completion.AssessmentID {
+		return ensure(false, "completion assessment reference does not resolve to the final assessment")
+	}
+
 	reviewPlan, reviewRevision, err := createActivePlan(harness, "review.example", 4001, 1, 1, 20)
 	if err != nil {
 		return err
